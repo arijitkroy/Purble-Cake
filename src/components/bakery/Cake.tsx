@@ -10,6 +10,23 @@ interface CakeProps {
   showPlate?: boolean;
 }
 
+/**
+ * Adjust hex color brightness by a specified integer amount (-255 to +255).
+ * Used to dynamically compute harmonious 3D lighting tones (highlights, shadows, speculars).
+ */
+function adjustColor(hex: string, amount: number): string {
+  let cleanHex = hex.replace('#', '');
+  if (cleanHex.length === 3) {
+    cleanHex = cleanHex.split('').map((c) => c + c).join('');
+  }
+  const num = parseInt(cleanHex, 16);
+  if (isNaN(num)) return hex;
+  const r = Math.min(255, Math.max(0, (num >> 16) + amount));
+  const g = Math.min(255, Math.max(0, ((num >> 8) & 0x00ff) + amount));
+  const b = Math.min(255, Math.max(0, (num & 0x0000ff) + amount));
+  return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+}
+
 export const Cake: React.FC<CakeProps> = ({
   cake,
   size = 'medium',
@@ -29,6 +46,44 @@ export const Cake: React.FC<CakeProps> = ({
     large: { width: 300, height: 260, viewBox: '0 0 240 220' }
   }[size];
 
+  // Derived 3D lighting colors for Base
+  const baseColors = baseData
+    ? {
+        highlight: adjustColor(baseData.color, 35),
+        specular: adjustColor(baseData.color, 55),
+        core: baseData.color,
+        shadow: baseData.secondaryColor,
+        deepShadow: adjustColor(baseData.secondaryColor, -40),
+        ambientRim: adjustColor(baseData.secondaryColor, -12)
+      }
+    : null;
+
+  // Derived 3D lighting colors for Filling
+  const fillColors = fillingData
+    ? {
+        highlight: adjustColor(fillingData.color, 45),
+        specular: adjustColor(fillingData.color, 65),
+        core: fillingData.color,
+        shadow: fillingData.secondaryColor,
+        deepShadow: adjustColor(fillingData.secondaryColor, -35),
+        ambientRim: adjustColor(fillingData.secondaryColor, -10)
+      }
+    : null;
+
+  // Derived 3D lighting colors for Frosting
+  const frostColors = frostingData
+    ? {
+        highlight: adjustColor(frostingData.color, 45),
+        specular: adjustColor(frostingData.color, 70),
+        core: frostingData.color,
+        shadow: frostingData.secondaryColor,
+        deepShadow: adjustColor(frostingData.secondaryColor, -40),
+        ambientRim: adjustColor(frostingData.secondaryColor, -15)
+      }
+    : null;
+
+  const shape = cake.shape || 'round';
+
   return (
     <div
       className={`cake-display cake-${size} ${className}`}
@@ -38,337 +93,918 @@ export const Cake: React.FC<CakeProps> = ({
         viewBox={dimensions.viewBox}
         width="100%"
         height="100%"
-        style={{ overflow: 'visible', filter: 'drop-shadow(0px 8px 16px rgba(90, 45, 15, 0.15))' }}
+        style={{
+          overflow: 'visible',
+          filter: 'drop-shadow(0px 10px 20px rgba(50, 25, 10, 0.22))'
+        }}
       >
         <defs>
-          {/* Plate Gradients */}
-          <linearGradient id="plateGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor="#FFFFFF" />
-            <stop offset="60%" stopColor="#E2E8F0" />
+          {/* 1. Metallic & Porcelain Plate Gradients */}
+          <linearGradient id="plateShadowGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#000000" stopOpacity="0.28" />
+            <stop offset="100%" stopColor="#000000" stopOpacity="0" />
+          </linearGradient>
+
+          <linearGradient id="plateChromeRim" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="#CBD5E1" />
+            <stop offset="25%" stopColor="#FFFFFF" />
+            <stop offset="50%" stopColor="#E2E8F0" />
+            <stop offset="75%" stopColor="#94A3B8" />
             <stop offset="100%" stopColor="#CBD5E1" />
           </linearGradient>
-          <linearGradient id="plateRim" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#F8FAFC" />
-            <stop offset="50%" stopColor="#FFFFFF" />
+
+          <linearGradient id="plateSurfaceGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#FFFFFF" />
+            <stop offset="40%" stopColor="#F8FAFC" />
             <stop offset="100%" stopColor="#E2E8F0" />
           </linearGradient>
 
-          {/* Dynamic Base Gradient */}
-          {baseData && (
-            <linearGradient id={`baseGrad_${baseData.id}`} x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor={baseData.secondaryColor} />
-              <stop offset="25%" stopColor={baseData.color} />
-              <stop offset="75%" stopColor={baseData.color} />
-              <stop offset="100%" stopColor={baseData.secondaryColor} />
-            </linearGradient>
+          {/* Ambient occlusion shadow under cake on plate */}
+          <radialGradient id="cakePlateContactShadow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#1E120A" stopOpacity="0.45" />
+            <stop offset="60%" stopColor="#2D1A0E" stopOpacity="0.25" />
+            <stop offset="100%" stopColor="#2D1A0E" stopOpacity="0" />
+          </radialGradient>
+
+          {/* 2. Dynamic 3D Base Gradients */}
+          {baseColors && baseData && (
+            <>
+              {/* Directional 3D cylinder lighting: light glances at ~20%, deep falloff at ~85% */}
+              <linearGradient id={`baseCylinder_${baseData.id}`} x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stopColor={baseColors.shadow} />
+                <stop offset="14%" stopColor={baseColors.highlight} />
+                <stop offset="35%" stopColor={baseColors.core} />
+                <stop offset="70%" stopColor={baseColors.shadow} />
+                <stop offset="90%" stopColor={baseColors.deepShadow} />
+                <stop offset="100%" stopColor={baseColors.ambientRim} />
+              </linearGradient>
+
+              {/* Top baked sponge ellipse with crust edge */}
+              <radialGradient id={`baseTop_${baseData.id}`} cx="40%" cy="38%" r="65%">
+                <stop offset="0%" stopColor={baseColors.highlight} />
+                <stop offset="60%" stopColor={baseColors.core} />
+                <stop offset="100%" stopColor={baseColors.shadow} />
+              </radialGradient>
+            </>
           )}
 
-          {/* Dynamic Frosting Gradient */}
-          {frostingData && (
-            <linearGradient id={`frostGrad_${frostingData.id}`} x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.45" />
-              <stop offset="20%" stopColor={frostingData.color} />
-              <stop offset="100%" stopColor={frostingData.secondaryColor} />
-            </linearGradient>
+          {/* 3. Dynamic 3D Filling Gradients */}
+          {fillColors && fillingData && (
+            <>
+              <linearGradient id={`fillCylinder_${fillingData.id}`} x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stopColor={fillColors.shadow} />
+                <stop offset="16%" stopColor={fillColors.highlight} />
+                <stop offset="40%" stopColor={fillColors.core} />
+                <stop offset="75%" stopColor={fillColors.shadow} />
+                <stop offset="92%" stopColor={fillColors.deepShadow} />
+                <stop offset="100%" stopColor={fillColors.ambientRim} />
+              </linearGradient>
+
+              <radialGradient id={`fillDollop_${fillingData.id}`} cx="35%" cy="30%" r="65%">
+                <stop offset="0%" stopColor={fillColors.specular} />
+                <stop offset="30%" stopColor={fillColors.highlight} />
+                <stop offset="70%" stopColor={fillColors.core} />
+                <stop offset="100%" stopColor={fillColors.shadow} />
+              </radialGradient>
+
+              <radialGradient id={`fillTop_${fillingData.id}`} cx="42%" cy="36%" r="65%">
+                <stop offset="0%" stopColor={fillColors.highlight} />
+                <stop offset="65%" stopColor={fillColors.core} />
+                <stop offset="100%" stopColor={fillColors.shadow} />
+              </radialGradient>
+            </>
           )}
 
-          {/* Filling Gradient */}
-          {fillingData && (
-            <linearGradient id={`fillGrad_${fillingData.id}`} x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor={fillingData.secondaryColor} />
-              <stop offset="50%" stopColor={fillingData.color} />
-              <stop offset="100%" stopColor={fillingData.secondaryColor} />
-            </linearGradient>
+          {/* 4. Dynamic 3D Frosting Gradients */}
+          {frostColors && frostingData && (
+            <>
+              <linearGradient id={`frostCylinder_${frostingData.id}`} x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stopColor={frostColors.shadow} />
+                <stop offset="15%" stopColor={frostColors.highlight} />
+                <stop offset="38%" stopColor={frostColors.core} />
+                <stop offset="72%" stopColor={frostColors.shadow} />
+                <stop offset="92%" stopColor={frostColors.deepShadow} />
+                <stop offset="100%" stopColor={frostColors.ambientRim} />
+              </linearGradient>
+
+              <radialGradient id={`frostTop_${frostingData.id}`} cx="40%" cy="32%" r="68%">
+                <stop offset="0%" stopColor={frostColors.specular} />
+                <stop offset="25%" stopColor={frostColors.highlight} />
+                <stop offset="65%" stopColor={frostColors.core} />
+                <stop offset="95%" stopColor={frostColors.shadow} />
+                <stop offset="100%" stopColor={frostColors.deepShadow} />
+              </radialGradient>
+
+              <radialGradient id={`frostRosette_${frostingData.id}`} cx="38%" cy="30%" r="65%">
+                <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.8" />
+                <stop offset="20%" stopColor={frostColors.highlight} />
+                <stop offset="70%" stopColor={frostColors.core} />
+                <stop offset="100%" stopColor={frostColors.shadow} />
+              </radialGradient>
+            </>
           )}
 
-          {/* Shadow Filter */}
-          <filter id="cakeShadow" x="-10%" y="-10%" width="120%" height="130%">
-            <feDropShadow dx="0" dy="4" stdDeviation="3" floodOpacity="0.25" />
+          {/* 5. Shading & Lighting Filters */}
+          <filter id="softGlow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="2" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
           </filter>
         </defs>
 
-        {/* 1. Cake Plate / Tray */}
+        {/* ============================================================ */}
+        {/* 1. CAKE PEDESTAL / PLATTER                                  */}
+        {/* ============================================================ */}
         {showPlate && (
-          <g id="plate-group">
-            {/* Stand shadow */}
-            <ellipse cx="120" cy="204" rx="90" ry="14" fill="rgba(0, 0, 0, 0.12)" />
-            {/* Plate rim */}
-            <ellipse cx="120" cy="196" rx="88" ry="16" fill="url(#plateRim)" stroke="#CBD5E1" strokeWidth="2.5" />
-            <ellipse cx="120" cy="194" rx="76" ry="12" fill="url(#plateGrad)" />
-            <ellipse cx="120" cy="192" rx="66" ry="9" fill="#F1F5F9" />
+          <g id="platter-group">
+            {/* Cast shadow under platter on table/conveyor */}
+            <ellipse cx="120" cy="206" rx="98" ry="14" fill="url(#plateShadowGrad)" />
+            {/* Outer silver platter rim */}
+            <ellipse cx="120" cy="198" rx="94" ry="18" fill="url(#plateChromeRim)" stroke="#94A3B8" strokeWidth="1.5" />
+            {/* Inner bevel ring */}
+            <ellipse cx="120" cy="196" rx="86" ry="15" fill="#E2E8F0" />
+            {/* Porcelain / silver platter top face */}
+            <ellipse cx="120" cy="194" rx="82" ry="13" fill="url(#plateSurfaceGrad)" />
+            {/* Inner decorative rim ring */}
+            <ellipse cx="120" cy="193" rx="72" ry="10.5" fill="none" stroke="#CBD5E1" strokeWidth="1" strokeDasharray="4 2" />
+            {/* Ambient occlusion shadow directly beneath the cake cylinder */}
+            <ellipse cx="120" cy="180" rx="70" ry="12" fill="url(#cakePlateContactShadow)" />
           </g>
         )}
 
-        {/* Empty placeholder guide if no base has been chosen yet */}
+        {/* ============================================================ */}
+        {/* EMPTY PLACEHOLDER GUIDE (When no base is chosen yet)         */}
+        {/* ============================================================ */}
         {!cake.base && (
-          <g id="empty-cake-guide" opacity="0.45">
-            <ellipse cx="120" cy="170" rx="55" ry="14" fill="none" stroke="#94A3B8" strokeWidth="2" strokeDasharray="6 4" />
-            <rect x="65" y="125" width="110" height="45" fill="none" stroke="#94A3B8" strokeWidth="2" strokeDasharray="6 4" />
-            <ellipse cx="120" cy="125" rx="55" ry="14" fill="none" stroke="#94A3B8" strokeWidth="2" strokeDasharray="6 4" />
-            <text x="120" y="152" textAnchor="middle" fill="#94A3B8" fontSize="13" fontWeight="bold" fontFamily="Fredoka, sans-serif">
-              Add Base
+          <g id="empty-cake-guide" opacity="0.5">
+            {/* 3D wireframe cylinder */}
+            <ellipse cx="120" cy="170" rx="66" ry="17" fill="none" stroke="#94A3B8" strokeWidth="2" strokeDasharray="6 4" />
+            <path d="M 54,126 L 54,170 C 54,192 186,192 186,170 L 186,126" fill="none" stroke="#94A3B8" strokeWidth="2" strokeDasharray="6 4" />
+            <ellipse cx="120" cy="126" rx="66" ry="17" fill="none" stroke="#94A3B8" strokeWidth="2" strokeDasharray="6 4" />
+            <text x="120" y="152" textAnchor="middle" fill="#64748B" fontSize="13" fontWeight="bold" fontFamily="Fredoka, sans-serif">
+              Add Cake Base
             </text>
           </g>
         )}
 
-        {/* 2. Cake Base (Bottom Tier) */}
-        {baseData && (
+        {/* ============================================================ */}
+        {/* 2. 3D CAKE BASE                                             */}
+        {/* ============================================================ */}
+        {baseData && baseColors && (
           <g id="base-tier" className={animateLayer === 'base' ? 'layer-bounce' : ''}>
-            {/* Base Body cylinder */}
-            <path
-              d="M 60,130 L 60,175 C 60,192 180,192 180,175 L 180,130 Z"
-              fill={`url(#baseGrad_${baseData.id})`}
-              stroke={baseData.secondaryColor}
-              strokeWidth="1.5"
-            />
-            {/* Subtle baked sponge pores */}
-            <circle cx="75" cy="165" r="1.5" fill={baseData.secondaryColor} opacity="0.6" />
-            <circle cx="95" cy="174" r="1.5" fill={baseData.secondaryColor} opacity="0.6" />
-            <circle cx="145" cy="172" r="1.5" fill={baseData.secondaryColor} opacity="0.6" />
-            <circle cx="165" cy="160" r="1.5" fill={baseData.secondaryColor} opacity="0.6" />
-            <circle cx="118" cy="177" r="1.5" fill={baseData.secondaryColor} opacity="0.6" />
+            {shape === 'round' && (
+              <>
+                {/* 2a. Bottom Sponge Layer (y: 152 -> 170 with curved bottom arc dipping to 187) */}
+                <path
+                  d="M 52,150 L 52,170 C 52,194 188,194 188,170 L 188,150 C 188,170 52,170 52,150 Z"
+                  fill={`url(#baseCylinder_${baseData.id})`}
+                  stroke={baseColors.shadow}
+                  strokeWidth="0.8"
+                />
 
-            {/* Base Top Ellipse (visible before frosting) */}
-            <ellipse
-              cx="120"
-              cy="130"
-              rx="60"
-              ry="16"
-              fill={baseData.color}
-              stroke={baseData.secondaryColor}
-              strokeWidth="1.5"
-            />
-          </g>
-        )}
+                {/* Bottom rim shadow contour against plate */}
+                <path
+                  d="M 54,171 C 70,192 170,192 186,171"
+                  fill="none"
+                  stroke={baseColors.deepShadow}
+                  strokeWidth="2"
+                  opacity="0.75"
+                />
 
-        {/* 3. Filling Layer (Middle ribbon & dollop) */}
-        {cake.base && fillingData && (
-          <g id="filling-tier" className={animateLayer === 'filling' ? 'layer-bounce' : ''}>
-            {/* Sandwiched cream line in the middle of sponge */}
-            <path
-              d="M 60,154 C 80,160 160,160 180,154 C 180,160 160,166 60,160 Z"
-              fill={`url(#fillGrad_${fillingData.id})`}
-            />
-            {/* Little cream dollops oozing on side */}
-            <ellipse cx="80" cy="158" rx="7" ry="4" fill={fillingData.color} />
-            <ellipse cx="120" cy="160" rx="9" ry="5" fill={fillingData.color} />
-            <ellipse cx="155" cy="158" rx="8" ry="4" fill={fillingData.color} />
-            {/* Top cream bed before frosting */}
-            {!cake.frosting && (
-              <ellipse cx="120" cy="128" rx="54" ry="13" fill={fillingData.color} opacity="0.85" />
+                {/* Baked crumb texture specks (3D pores with tiny shadow and highlight) */}
+                <g id="sponge-crumbs" opacity="0.65">
+                  <circle cx="70" cy="168" r="1.2" fill={baseColors.deepShadow} />
+                  <circle cx="70.5" cy="168.5" r="0.8" fill={baseColors.highlight} />
+                  <circle cx="92" cy="176" r="1.4" fill={baseColors.deepShadow} />
+                  <circle cx="92.6" cy="176.6" r="0.9" fill={baseColors.highlight} />
+                  <circle cx="118" cy="178" r="1.2" fill={baseColors.deepShadow} />
+                  <circle cx="118.5" cy="178.5" r="0.8" fill={baseColors.highlight} />
+                  <circle cx="144" cy="176" r="1.4" fill={baseColors.deepShadow} />
+                  <circle cx="166" cy="166" r="1.2" fill={baseColors.deepShadow} />
+                  <circle cx="82" cy="142" r="1.1" fill={baseColors.deepShadow} />
+                  <circle cx="152" cy="142" r="1.2" fill={baseColors.deepShadow} />
+                </g>
+
+                {/* 2b. Upper Sponge Layer (y: 126 -> 150) */}
+                <path
+                  d="M 52,126 L 52,150 C 52,170 188,170 188,150 L 188,126 Z"
+                  fill={`url(#baseCylinder_${baseData.id})`}
+                  stroke={baseColors.shadow}
+                  strokeWidth="0.8"
+                />
+
+                {/* Baked crust rim highlight on left flank */}
+                <path
+                  d="M 53,127 L 53,168"
+                  fill="none"
+                  stroke={baseColors.highlight}
+                  strokeWidth="1.2"
+                  opacity="0.8"
+                />
+
+                {/* 2c. Top Ellipse of Sponge Tier */}
+                <ellipse
+                  cx="120"
+                  cy="126"
+                  rx="68"
+                  ry="18"
+                  fill={`url(#baseTop_${baseData.id})`}
+                  stroke={baseColors.shadow}
+                  strokeWidth="1.2"
+                />
+
+                {/* Baked crust edge rim definition */}
+                <ellipse
+                  cx="120"
+                  cy="126"
+                  rx="66.5"
+                  ry="17"
+                  fill="none"
+                  stroke={baseColors.highlight}
+                  strokeWidth="1"
+                  opacity="0.75"
+                />
+              </>
+            )}
+
+            {shape === 'square' && (
+              <>
+                {/* 3D Isometric Square Sponge Cake */}
+                {/* Left Face (in soft key light) */}
+                <polygon
+                  points="52,138 120,166 120,202 52,174"
+                  fill={baseColors.core}
+                  stroke={baseColors.shadow}
+                  strokeWidth="1"
+                />
+                {/* Right Face (in shadow) */}
+                <polygon
+                  points="120,166 188,138 188,174 120,202"
+                  fill={baseColors.deepShadow}
+                  stroke={baseColors.shadow}
+                  strokeWidth="1"
+                />
+                {/* Top Rhombus Face */}
+                <polygon
+                  points="120,110 188,138 120,166 52,138"
+                  fill={baseColors.highlight}
+                  stroke={baseColors.shadow}
+                  strokeWidth="1.2"
+                />
+              </>
+            )}
+
+            {shape === 'heart' && (
+              <>
+                {/* 3D Isometric Heart Sponge Cake */}
+                <path
+                  d="M 120,138 C 105,116 52,120 52,148 C 52,174 100,192 120,202 C 140,192 188,174 188,148 C 188,120 135,116 120,138 Z"
+                  fill={`url(#baseCylinder_${baseData.id})`}
+                  stroke={baseColors.shadow}
+                  strokeWidth="1.2"
+                />
+                <path
+                  d="M 120,118 C 105,96 56,102 56,130 C 56,156 100,174 120,184 C 140,174 184,156 184,130 C 184,102 135,96 120,118 Z"
+                  fill={`url(#baseTop_${baseData.id})`}
+                  stroke={baseColors.shadow}
+                  strokeWidth="1"
+                />
+              </>
             )}
           </g>
         )}
 
-        {/* 4. Frosting Layer (Rich glossy icing with luscious wavy drips) */}
-        {cake.base && frostingData && (
-          <g id="frosting-tier" className={animateLayer === 'frosting' ? 'layer-bounce' : ''}>
-            {/* Top dome of icing */}
-            <ellipse
-              cx="120"
-              cy="126"
-              rx="62"
-              ry="17"
-              fill={`url(#frostGrad_${frostingData.id})`}
-              stroke={frostingData.secondaryColor}
-              strokeWidth="1"
+        {/* ============================================================ */}
+        {/* 3. 3D SANDWICHED FILLING LAYER                              */}
+        {/* ============================================================ */}
+        {cake.base && fillingData && fillColors && (
+          <g id="filling-tier" className={animateLayer === 'filling' ? 'layer-bounce' : ''}>
+            {/* Seam groove shadow in the sponge */}
+            <path
+              d="M 51,146 C 51,168 189,168 189,146 L 189,155 C 189,175 51,175 51,155 Z"
+              fill="rgba(20, 10, 5, 0.45)"
             />
 
-            {/* Frosting Drips hanging down the sides */}
+            {/* Bulging 3D cream ribbon across the cake waist */}
             <path
-              d="M 58,126
-                 C 58,142 66,150 70,140
-                 C 74,130 78,148 85,152
-                 C 92,156 98,135 106,144
-                 C 114,153 124,155 132,143
-                 C 140,131 146,150 154,148
-                 C 162,146 168,132 174,142
-                 C 178,150 182,138 182,126
-                 Z"
-              fill={`url(#frostGrad_${frostingData.id})`}
+              d="M 50,147 C 50,171 190,171 190,147 C 190,163 50,163 50,147 Z"
+              fill={`url(#fillCylinder_${fillingData.id})`}
             />
 
-            {/* Glossy highlight curve on frosting */}
+            {/* Glossy highlight bead along the curved cream waist */}
             <path
-              d="M 78,121 C 95,114 140,114 158,120"
+              d="M 64,156 C 88,164 152,164 176,156"
               fill="none"
               stroke="#FFFFFF"
-              strokeWidth="3.5"
+              strokeWidth="2.2"
               strokeLinecap="round"
-              opacity="0.65"
+              opacity="0.6"
             />
             <path
-              d="M 85,125 C 100,120 135,120 148,124"
+              d="M 72,157 C 92,163 145,163 166,157"
               fill="none"
-              stroke="#FFFFFF"
-              strokeWidth="1.5"
+              stroke={fillColors.specular}
+              strokeWidth="1"
               strokeLinecap="round"
               opacity="0.8"
             />
+
+            {/* 3D Oozing Cream/Jam Dollops along the middle seam */}
+            {/* Left Dollop */}
+            <ellipse cx="76" cy="159" rx="8" ry="5.5" fill="rgba(0,0,0,0.22)" />
+            <ellipse cx="76" cy="157" rx="7.5" ry="5" fill={`url(#fillDollop_${fillingData.id})`} />
+            <ellipse cx="74.5" cy="155" rx="3" ry="1.8" fill="#FFFFFF" opacity="0.75" />
+
+            {/* Center-Left Dollop */}
+            <ellipse cx="106" cy="164" rx="10" ry="6.5" fill="rgba(0,0,0,0.22)" />
+            <ellipse cx="106" cy="162" rx="9.5" ry="6" fill={`url(#fillDollop_${fillingData.id})`} />
+            <ellipse cx="104" cy="159.5" rx="3.8" ry="2" fill="#FFFFFF" opacity="0.8" />
+
+            {/* Center-Right Dollop */}
+            <ellipse cx="138" cy="164" rx="9" ry="6" fill="rgba(0,0,0,0.22)" />
+            <ellipse cx="138" cy="162" rx="8.5" ry="5.5" fill={`url(#fillDollop_${fillingData.id})`} />
+            <ellipse cx="136" cy="160" rx="3.5" ry="1.8" fill="#FFFFFF" opacity="0.75" />
+
+            {/* Right Dollop */}
+            <ellipse cx="166" cy="158" rx="8" ry="5" fill="rgba(0,0,0,0.22)" />
+            <ellipse cx="166" cy="156" rx="7.5" ry="4.5" fill={`url(#fillDollop_${fillingData.id})`} />
+            <ellipse cx="164.5" cy="154.5" rx="2.8" ry="1.5" fill="#FFFFFF" opacity="0.65" />
+
+            {/* Top cream bed (visible before frosting is applied) */}
+            {!cake.frosting && (
+              <g id="top-filling-spread">
+                <ellipse cx="120" cy="125" rx="63" ry="15.5" fill={`url(#fillTop_${fillingData.id})`} />
+                <path
+                  d="M 80,121 C 98,116 142,116 160,121"
+                  fill="none"
+                  stroke="#FFFFFF"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  opacity="0.5"
+                />
+              </g>
+            )}
           </g>
         )}
 
-        {/* 5. Decoration Layer (Sprinkles, Stars, Hearts, Dots, Swirls, Candies) */}
+        {/* ============================================================ */}
+        {/* 4. 3D VOLUMETRIC FROSTING CAP (PURBLE PLACE SIGNATURE LOOK)   */}
+        {/* ============================================================ */}
+        {cake.base && frostingData && frostColors && (
+          <g id="frosting-tier" className={animateLayer === 'frosting' ? 'layer-bounce' : ''}>
+            {/* 4a. Ambient Occlusion Drop Shadow onto Sponge Below Drips */}
+            <path
+              d="M 50,129
+                 C 50,147 58,157 64,147
+                 C 68,138 72,158 80,163
+                 C 88,168 94,143 102,152
+                 C 110,161 116,168 126,164
+                 C 134,160 140,142 148,154
+                 C 156,164 162,156 168,145
+                 C 174,136 182,154 190,129
+                 C 190,135 50,135 50,129 Z"
+              fill="rgba(35, 15, 5, 0.38)"
+              transform="translate(1, 3)"
+            />
+
+            {/* 4b. Volumetric Front Frosting Curtain & Dripping Scallops */}
+            <path
+              d="M 50,125
+                 C 50,145 58,154 64,144
+                 C 68,135 72,155 80,160
+                 C 88,165 94,140 102,149
+                 C 110,158 116,165 126,161
+                 C 134,157 140,139 148,151
+                 C 156,161 162,153 168,142
+                 C 174,133 182,151 190,125
+                 C 190,142 50,142 50,125 Z"
+              fill={`url(#frostCylinder_${frostingData.id})`}
+              stroke={frostColors.shadow}
+              strokeWidth="0.8"
+            />
+
+            {/* 4c. Bulbous 3D droplet bulbs at tips of major drips */}
+            {/* Drip Bulb 1 (left) */}
+            <ellipse cx="80" cy="158" rx="7" ry="5.5" fill={`url(#frostCylinder_${frostingData.id})`} />
+            <circle cx="78.5" cy="156" r="2.2" fill="#FFFFFF" opacity="0.7" />
+
+            {/* Drip Bulb 2 (center-left) */}
+            <ellipse cx="125" cy="160" rx="8" ry="6" fill={`url(#frostCylinder_${frostingData.id})`} />
+            <circle cx="123" cy="157.5" r="2.8" fill="#FFFFFF" opacity="0.8" />
+
+            {/* Drip Bulb 3 (center-right) */}
+            <ellipse cx="152" cy="150" rx="6.5" ry="5" fill={`url(#frostCylinder_${frostingData.id})`} />
+            <circle cx="150.5" cy="148" r="2" fill="#FFFFFF" opacity="0.65" />
+
+            {/* 4d. Frosting Top Dome Ellipse */}
+            <ellipse
+              cx="120"
+              cy="124"
+              rx="70"
+              ry="19"
+              fill={`url(#frostTop_${frostingData.id})`}
+              stroke={frostColors.shadow}
+              strokeWidth="1.2"
+            />
+
+            {/* 4e. Dual-Layer Confectionery Gloss / Specular Sheen */}
+            {/* Broad soft glaze highlight */}
+            <path
+              d="M 68,118 C 90,111 150,111 172,118 C 152,122 88,122 68,118 Z"
+              fill="#FFFFFF"
+              opacity="0.32"
+            />
+            {/* Crisp intense specular reflection curve */}
+            <path
+              d="M 78,116 C 96,111 144,111 162,116"
+              fill="none"
+              stroke="#FFFFFF"
+              strokeWidth="3.2"
+              strokeLinecap="round"
+              opacity="0.85"
+            />
+            <path
+              d="M 88,121 C 104,117 136,117 152,121"
+              fill="none"
+              stroke="#FFFFFF"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              opacity="0.9"
+            />
+
+            {/* 4f. Classic Comfy Cakes Whipped Cream Rosettes / Piped Peaks along Rim */}
+            <g id="piped-rosettes">
+              {[
+                { cx: 58, cy: 125, r: 5.5 },
+                { cx: 78, cy: 118, r: 6 },
+                { cx: 104, cy: 113, r: 6.5 },
+                { cx: 136, cy: 113, r: 6.5 },
+                { cx: 162, cy: 118, r: 6 },
+                { cx: 182, cy: 125, r: 5.5 }
+              ].map((rosette, i) => (
+                <g key={`rosette-${i}`}>
+                  {/* Rosette base shadow */}
+                  <ellipse cx={rosette.cx} cy={rosette.cy + 1} rx={rosette.r} ry={rosette.r * 0.55} fill="rgba(0,0,0,0.15)" />
+                  {/* Rosette whipped dollop */}
+                  <ellipse
+                    cx={rosette.cx}
+                    cy={rosette.cy}
+                    rx={rosette.r}
+                    ry={rosette.r * 0.65}
+                    fill={`url(#frostRosette_${frostingData.id})`}
+                    stroke={frostColors.shadow}
+                    strokeWidth="0.6"
+                  />
+                  {/* Swirl ridge */}
+                  <path
+                    d={`M ${rosette.cx - rosette.r * 0.5},${rosette.cy} Q ${rosette.cx},${rosette.cy - rosette.r * 0.4} ${rosette.cx + rosette.r * 0.5},${rosette.cy}`}
+                    fill="none"
+                    stroke="#FFFFFF"
+                    strokeWidth="1.2"
+                    strokeLinecap="round"
+                    opacity="0.75"
+                  />
+                </g>
+              ))}
+            </g>
+          </g>
+        )}
+
+        {/* ============================================================ */}
+        {/* 5. 3D DECORATIONS (PERSPECTIVE TILTED & BEVELED)              */}
+        {/* ============================================================ */}
         {cake.base && cake.decoration && (
           <g id="decoration-tier" className={animateLayer === 'decoration' ? 'layer-bounce' : ''}>
+            {/* 5a. SPRINKLES: 3D Cylindrical Sugar Jimmies with Drop Shadows */}
             {cake.decoration === 'sprinkles' && (
-              <g id="decor-sprinkles" strokeWidth="3" strokeLinecap="round">
-                <line x1="85" y1="120" x2="95" y2="124" stroke="#FF5252" />
-                <line x1="105" y1="116" x2="114" y2="122" stroke="#448AFF" />
-                <line x1="125" y1="118" x2="135" y2="115" stroke="#FFD740" />
-                <line x1="145" y1="122" x2="155" y2="119" stroke="#69F0AE" />
-                <line x1="95" y1="129" x2="105" y2="132" stroke="#E040FB" />
-                <line x1="118" y1="127" x2="128" y2="130" stroke="#FFAB40" />
-                <line x1="138" y1="126" x2="146" y2="131" stroke="#FF5252" />
-                <line x1="80" y1="125" x2="88" y2="128" stroke="#40C4FF" />
-                <line x1="152" y1="127" x2="160" y2="123" stroke="#7C4DFF" />
+              <g id="decor-sprinkles">
+                {[
+                  { x: 80, y: 122, angle: 18, color: '#FF3366', shadowColor: '#B3003B' },
+                  { x: 100, y: 117, angle: -25, color: '#3399FF', shadowColor: '#0059B3' },
+                  { x: 120, y: 123, angle: 35, color: '#FFCC00', shadowColor: '#B38F00' },
+                  { x: 142, y: 116, angle: -15, color: '#33CC66', shadowColor: '#1F803E' },
+                  { x: 160, y: 122, angle: 22, color: '#CC33FF', shadowColor: '#8000B3' },
+                  { x: 92, y: 128, angle: -40, color: '#FF8800', shadowColor: '#B35F00' },
+                  { x: 114, y: 127, angle: 12, color: '#00D9D9', shadowColor: '#008C8C' },
+                  { x: 134, y: 128, angle: -30, color: '#FF3366', shadowColor: '#B3003B' },
+                  { x: 152, y: 128, angle: 45, color: '#FFCC00', shadowColor: '#B38F00' },
+                  { x: 74, y: 127, angle: -10, color: '#3399FF', shadowColor: '#0059B3' },
+                  { x: 166, y: 125, angle: -20, color: '#33CC66', shadowColor: '#1F803E' }
+                ].map((s, idx) => (
+                  <g key={`sprinkle-${idx}`} transform={`translate(${s.x}, ${s.y}) rotate(${s.angle})`}>
+                    {/* Drop shadow */}
+                    <rect x="-6" y="-0.5" width="12" height="3.5" rx="1.7" fill="rgba(0,0,0,0.25)" />
+                    {/* 3D Cylindrical body */}
+                    <rect x="-6" y="-2" width="12" height="3.5" rx="1.7" fill={s.color} stroke={s.shadowColor} strokeWidth="0.6" />
+                    {/* Top specular highlight line */}
+                    <line x1="-4" y1="-1.2" x2="4" y2="-1.2" stroke="#FFFFFF" strokeWidth="1" strokeLinecap="round" opacity="0.8" />
+                  </g>
+                ))}
               </g>
             )}
 
+            {/* 5b. STARS: 3D Faceted Gold Sugar Candies */}
             {cake.decoration === 'stars' && (
-              <g id="decor-stars" fill="#FFD700" stroke="#FFA000" strokeWidth="0.8">
-                {/* 5-pointed star paths */}
-                <polygon points="90,118 92,123 97,123 93,126 95,131 90,128 85,131 87,126 83,123 88,123" />
-                <polygon points="115,115 117,120 122,120 118,123 120,128 115,125 110,128 112,123 108,120 113,120" transform="scale(1.1) translate(-10,-10)" />
-                <polygon points="142,118 144,123 149,123 145,126 147,131 142,128 137,131 139,126 135,123 140,123" />
-                <polygon points="102,126 104,130 108,130 105,132 106,136 102,134 98,136 100,132 96,130 100,130" />
-                <polygon points="128,126 130,130 134,130 131,132 132,136 128,134 124,136 126,132 122,130 126,130" />
+              <g id="decor-stars">
+                {[
+                  { cx: 86, cy: 122, scale: 1.1 },
+                  { cx: 110, cy: 118, scale: 1.3 },
+                  { cx: 138, cy: 118, scale: 1.2 },
+                  { cx: 158, cy: 122, scale: 1.0 },
+                  { cx: 98, cy: 129, scale: 1.0 },
+                  { cx: 126, cy: 129, scale: 1.1 }
+                ].map((st, i) => (
+                  <g key={`star-${i}`} transform={`translate(${st.cx}, ${st.cy}) scale(${st.scale})`}>
+                    {/* Drop shadow */}
+                    <polygon points="0,-7 2,-2 7,-2 3,1 5,6 0,3 -5,6 -3,1 -7,-2 -2,-2" fill="rgba(0,0,0,0.22)" transform="translate(1, 2)" />
+                    {/* Shaded base facet */}
+                    <polygon points="0,-7 2,-2 7,-2 3,1 5,6 0,3 -5,6 -3,1 -7,-2 -2,-2" fill="#FFA000" stroke="#FF8F00" strokeWidth="0.6" />
+                    {/* Highlighted left facets */}
+                    <polygon points="0,-7 0,3 -5,6 -3,1 -7,-2 -2,-2" fill="#FFD54F" />
+                    <polygon points="0,-7 0,3 2,-2" fill="#FFF176" />
+                    {/* Center glint */}
+                    <circle cx="-0.8" cy="-1.5" r="1.2" fill="#FFFFFF" />
+                  </g>
+                ))}
               </g>
             )}
 
+            {/* 5c. HEARTS: 3D Puffy Fondant Hearts */}
             {cake.decoration === 'hearts' && (
-              <g id="decor-hearts" fill="#FF4081" stroke="#C2185B" strokeWidth="0.8">
-                <path d="M 90,120 C 90,116 85,114 82,117 C 79,114 74,116 74,120 C 74,125 82,129 82,129 C 82,129 90,125 90,120 Z" transform="scale(0.9) translate(10, 5)" />
-                <path d="M 118,118 C 118,114 113,112 110,115 C 107,112 102,114 102,118 C 102,123 110,127 110,127 C 110,127 118,123 118,118 Z" transform="scale(1.0) translate(0, 0)" />
-                <path d="M 146,120 C 146,116 141,114 138,117 C 135,114 130,116 130,120 C 130,125 138,129 138,129 C 138,129 146,125 146,120 Z" transform="scale(0.9) translate(15, 5)" />
-                <path d="M 105,127 C 105,124 101,122 99,124 C 97,122 93,124 93,127 C 93,131 99,134 99,134 C 99,134 105,131 105,127 Z" transform="scale(0.8) translate(25, 25)" />
-                <path d="M 135,127 C 135,124 131,122 129,124 C 127,122 123,124 123,127 C 123,131 129,134 129,134 C 129,134 135,131 135,127 Z" transform="scale(0.8) translate(25, 25)" />
+              <g id="decor-hearts">
+                {[
+                  { cx: 82, cy: 123, scale: 1.0, rot: -10 },
+                  { cx: 106, cy: 118, scale: 1.2, rot: 5 },
+                  { cx: 134, cy: 118, scale: 1.2, rot: -8 },
+                  { cx: 158, cy: 123, scale: 1.0, rot: 12 },
+                  { cx: 120, cy: 128, scale: 1.1, rot: 0 }
+                ].map((h, i) => (
+                  <g key={`heart-${i}`} transform={`translate(${h.cx}, ${h.cy}) rotate(${h.rot}) scale(${h.scale})`}>
+                    {/* Drop shadow */}
+                    <path
+                      d="M 0,4 C -6,-1 -8,-6 -3,-7 C -1,-7 0,-4 0,-4 C 0,-4 1,-7 3,-7 C 8,-6 6,-1 0,4 Z"
+                      fill="rgba(0,0,0,0.22)"
+                      transform="translate(1, 2)"
+                    />
+                    {/* Puffy 3D heart body */}
+                    <path
+                      d="M 0,4 C -6,-1 -8,-6 -3,-7 C -1,-7 0,-4 0,-4 C 0,-4 1,-7 3,-7 C 8,-6 6,-1 0,4 Z"
+                      fill="#FF4081"
+                      stroke="#C2185B"
+                      strokeWidth="0.8"
+                    />
+                    {/* Specular gloss sheen on lobes */}
+                    <ellipse cx="-2.5" cy="-5" rx="1.8" ry="1.2" fill="#FFFFFF" opacity="0.8" />
+                    <ellipse cx="2.5" cy="-5" rx="1.4" ry="0.9" fill="#FFFFFF" opacity="0.6" />
+                  </g>
+                ))}
               </g>
             )}
 
+            {/* 5d. DOTS: 3D Iridescent Sugar Pearls */}
             {cake.decoration === 'dots' && (
-              <g id="decor-dots">
-                <circle cx="85" cy="122" r="4.5" fill="#E0F7FA" stroke="#80DEEA" strokeWidth="1" />
-                <circle cx="83.5" cy="120.5" r="1.5" fill="#FFFFFF" />
-                <circle cx="102" cy="118" r="5" fill="#E0F7FA" stroke="#80DEEA" strokeWidth="1" />
-                <circle cx="100.5" cy="116.5" r="1.5" fill="#FFFFFF" />
-                <circle cx="120" cy="121" r="5.5" fill="#E0F7FA" stroke="#80DEEA" strokeWidth="1" />
-                <circle cx="118" cy="119" r="1.8" fill="#FFFFFF" />
-                <circle cx="138" cy="118" r="5" fill="#E0F7FA" stroke="#80DEEA" strokeWidth="1" />
-                <circle cx="136.5" cy="116.5" r="1.5" fill="#FFFFFF" />
-                <circle cx="155" cy="122" r="4.5" fill="#E0F7FA" stroke="#80DEEA" strokeWidth="1" />
-                <circle cx="153.5" cy="120.5" r="1.5" fill="#FFFFFF" />
+              <g id="decor-pearls">
+                {[
+                  { cx: 80, cy: 124, r: 4.8 },
+                  { cx: 96, cy: 119, r: 5.2 },
+                  { cx: 114, cy: 117, r: 5.5 },
+                  { cx: 132, cy: 117, r: 5.5 },
+                  { cx: 150, cy: 119, r: 5.2 },
+                  { cx: 164, cy: 124, r: 4.8 },
+                  { cx: 104, cy: 128, r: 5.0 },
+                  { cx: 124, cy: 128, r: 5.0 },
+                  { cx: 142, cy: 128, r: 5.0 }
+                ].map((p, i) => (
+                  <g key={`pearl-${i}`}>
+                    {/* Contact shadow */}
+                    <ellipse cx={p.cx + 0.8} cy={p.cy + 1.2} rx={p.r} ry={p.r * 0.7} fill="rgba(0,0,0,0.22)" />
+                    {/* 3D Sphere gradient */}
+                    <circle cx={p.cx} cy={p.cy} r={p.r} fill="#E0F7FA" stroke="#80DEEA" strokeWidth="0.8" />
+                    {/* Shaded crescent underside */}
+                    <path
+                      d={`M ${p.cx - p.r * 0.7},${p.cy + p.r * 0.5} A ${p.r},${p.r} 0 0,0 ${p.cx + p.r * 0.7},${p.cy + p.r * 0.5} A ${p.r * 0.8},${p.r * 0.5} 0 0,1 ${p.cx - p.r * 0.7},${p.cy + p.r * 0.5}`}
+                      fill="#4DD0E1"
+                      opacity="0.85"
+                    />
+                    {/* Brilliant white specular gleam */}
+                    <circle cx={p.cx - p.r * 0.35} cy={p.cy - p.r * 0.35} r={p.r * 0.32} fill="#FFFFFF" />
+                  </g>
+                ))}
               </g>
             )}
 
+            {/* 5e. SWIRLS: 3D Piped Ganache / Drizzle Ribbons */}
             {cake.decoration === 'swirls' && (
-              <g id="decor-swirls" fill="none" stroke="#4E342E" strokeWidth="2.5" strokeLinecap="round">
-                <path d="M 85,124 Q 95,116 105,124 T 125,123 T 145,124 T 158,122" />
-                <path d="M 92,129 Q 104,122 116,130 T 136,128 T 150,129" strokeWidth="2" opacity="0.8" />
-              </g>
-            )}
-
-            {cake.decoration === 'candies' && (
-              <g id="decor-candies">
-                <ellipse cx="88" cy="122" rx="5" ry="3.5" fill="#9C27B0" stroke="#7B1FA2" strokeWidth="0.8" transform="rotate(-15 88 122)" />
-                <ellipse cx="106" cy="117" rx="5.5" ry="4" fill="#4CAF50" stroke="#388E3C" strokeWidth="0.8" transform="rotate(10 106 117)" />
-                <ellipse cx="124" cy="121" rx="5.5" ry="4" fill="#FF9800" stroke="#F57C00" strokeWidth="0.8" transform="rotate(-8 124 121)" />
-                <ellipse cx="142" cy="117" rx="5" ry="3.5" fill="#E91E63" stroke="#C2185B" strokeWidth="0.8" transform="rotate(15 142 117)" />
-                <ellipse cx="156" cy="123" rx="4.5" ry="3" fill="#00BCD4" stroke="#0097A7" strokeWidth="0.8" transform="rotate(-12 156 123)" />
-              </g>
-            )}
-          </g>
-        )}
-
-        {/* 6. Topping Layer (Cherry, Strawberry, Blueberry, Wafer, Choc Piece, Candy) */}
-        {cake.base && cake.topping && (
-          <g id="topping-tier" className={animateLayer === 'topping' ? 'layer-bounce' : ''}>
-            {cake.topping === 'cherry' && (
-              <g id="topping-cherry">
-                {/* Green Cherry Stem with cute curve */}
+              <g id="decor-swirls">
+                {/* Shadow stroke */}
                 <path
-                  d="M 120,95 C 122,80 135,70 142,66"
+                  d="M 80,125 Q 95,116 110,124 T 135,123 T 155,124 T 166,122"
                   fill="none"
-                  stroke="#4CAF50"
+                  stroke="rgba(20,10,5,0.3)"
+                  strokeWidth="3.5"
+                  strokeLinecap="round"
+                  transform="translate(1, 2)"
+                />
+                {/* Rich chocolate ganache body */}
+                <path
+                  d="M 80,125 Q 95,116 110,124 T 135,123 T 155,124 T 166,122"
+                  fill="none"
+                  stroke="#3E2723"
+                  strokeWidth="3.2"
+                  strokeLinecap="round"
+                />
+                {/* Raised 3D glossy spine highlight */}
+                <path
+                  d="M 81,124.2 Q 95,115.5 110,123.2 T 135,122.2 T 155,123.2 T 165,121.2"
+                  fill="none"
+                  stroke="#8D6E63"
+                  strokeWidth="1.2"
+                  strokeLinecap="round"
+                  opacity="0.85"
+                />
+                {/* Secondary drizzle accent */}
+                <path
+                  d="M 88,130 Q 104,123 120,131 T 142,129 T 156,130"
+                  fill="none"
+                  stroke="#4E342E"
                   strokeWidth="2.5"
                   strokeLinecap="round"
                 />
-                {/* Small leaf */}
-                <path d="M 135,74 Q 146,72 144,80 Q 138,82 135,74 Z" fill="#66BB6A" />
-                {/* Glossy Red Maraschino Cherry */}
-                <circle cx="120" cy="104" r="14" fill="#D50000" stroke="#B71C1C" strokeWidth="1.2" />
-                {/* Specular gloss shines */}
-                <circle cx="116" cy="99" r="3.5" fill="#FF8A80" opacity="0.9" />
-                <circle cx="114" cy="97" r="1.5" fill="#FFFFFF" />
+                <path
+                  d="M 89,129.5 Q 104,122.5 120,130.5 T 142,128.5 T 155,129.5"
+                  fill="none"
+                  stroke="#A1887F"
+                  strokeWidth="0.8"
+                  strokeLinecap="round"
+                  opacity="0.8"
+                />
               </g>
             )}
 
+            {/* 5f. CANDIES: 3D Jewel Jelly Drops / Dragees */}
+            {cake.decoration === 'candies' && (
+              <g id="decor-candies">
+                {[
+                  { cx: 86, cy: 123, color: '#9C27B0', strokeColor: '#6A1B9A', rot: -15 },
+                  { cx: 104, cy: 118, color: '#4CAF50', strokeColor: '#2E7D32', rot: 10 },
+                  { cx: 122, cy: 122, color: '#FF9800', strokeColor: '#E65100', rot: -8 },
+                  { cx: 140, cy: 118, color: '#E91E63', strokeColor: '#AD1457', rot: 15 },
+                  { cx: 158, cy: 123, color: '#00BCD4', strokeColor: '#00838F', rot: -12 }
+                ].map((c, i) => (
+                  <g key={`candy-${i}`} transform={`translate(${c.cx}, ${c.cy}) rotate(${c.rot})`}>
+                    {/* Shadow */}
+                    <ellipse cx="1" cy="2" rx="5.5" ry="4" fill="rgba(0,0,0,0.22)" />
+                    {/* 3D Jelly drop body */}
+                    <ellipse cx="0" cy="0" rx="5.5" ry="4" fill={c.color} stroke={c.strokeColor} strokeWidth="0.8" />
+                    {/* Internal glow */}
+                    <ellipse cx="-1" cy="-0.8" rx="3.5" ry="2" fill="#FFFFFF" opacity="0.45" />
+                    {/* Curved glossy highlight spot */}
+                    <ellipse cx="-1.8" cy="-1.5" rx="1.8" ry="1" fill="#FFFFFF" opacity="0.9" />
+                  </g>
+                ))}
+              </g>
+            )}
+          </g>
+        )}
+
+        {/* ============================================================ */}
+        {/* 6. 3D TOPPINGS (REALISTIC SHADING & CONTACT SHADOWS)          */}
+        {/* ============================================================ */}
+        {cake.base && cake.topping && (
+          <g id="topping-tier" className={animateLayer === 'topping' ? 'layer-bounce' : ''}>
+            {/* 6a. CHERRY: Glossy Maraschino Cherry with Stem & Leaf */}
+            {cake.topping === 'cherry' && (
+              <g id="topping-cherry">
+                {/* Contact shadow on frosting */}
+                <ellipse cx="123" cy="116" rx="14" ry="5" fill="rgba(20, 10, 5, 0.35)" />
+
+                {/* Plump 3D Cherry Body */}
+                <circle cx="120" cy="103" r="14.5" fill="#D50000" stroke="#8B0000" strokeWidth="1.2" />
+                {/* Shaded underside crescent */}
+                <path
+                  d="M 106,104 A 14.5,14.5 0 0,0 134,104 A 14.5,11 0 0,1 106,104 Z"
+                  fill="#5C0000"
+                  opacity="0.85"
+                />
+                {/* Warm ambient bounce reflection on bottom right */}
+                <path
+                  d="M 124,115 A 14.5,14.5 0 0,0 133,107"
+                  fill="none"
+                  stroke="#FF5252"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  opacity="0.6"
+                />
+                {/* Primary curved specular gloss */}
+                <ellipse cx="114.5" cy="97" rx="4.5" ry="3" fill="#FFFFFF" opacity="0.85" transform="rotate(-25 114.5 97)" />
+                {/* Secondary pinpoint glint */}
+                <circle cx="111.5" cy="101.5" r="1.5" fill="#FFFFFF" opacity="0.95" />
+
+                {/* Cherry stem indentation pit */}
+                <ellipse cx="120" cy="94" rx="3.5" ry="1.5" fill="#5C0000" />
+
+                {/* Curved woody green stem */}
+                <path
+                  d="M 120,94 C 122,78 136,68 144,63"
+                  fill="none"
+                  stroke="#2E7D32"
+                  strokeWidth="3.2"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M 120,94 C 122,78 136,68 144,63"
+                  fill="none"
+                  stroke="#66BB6A"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+
+                {/* 3D Folded green leaf with vein */}
+                <g transform="translate(136, 70) rotate(-15)">
+                  {/* Leaf drop shadow */}
+                  <path d="M 0,0 Q 12,-3 14,8 Q 5,9 0,0 Z" fill="rgba(0,0,0,0.18)" transform="translate(1, 2)" />
+                  {/* Leaf upper half (light) */}
+                  <path d="M 0,0 Q 12,-5 14,6 L 0,0 Z" fill="#81C784" stroke="#2E7D32" strokeWidth="0.8" />
+                  {/* Leaf lower half (shadow) */}
+                  <path d="M 0,0 L 14,6 Q 5,10 0,0 Z" fill="#388E3C" stroke="#2E7D32" strokeWidth="0.8" />
+                  {/* Center vein */}
+                  <line x1="0" y1="0" x2="13" y2="5.5" stroke="#1B5E20" strokeWidth="0.8" />
+                </g>
+              </g>
+            )}
+
+            {/* 6b. STRAWBERRY: 3D Berry with Gold Seeds & Calyx Crown */}
             {cake.topping === 'strawberry' && (
               <g id="topping-strawberry">
-                {/* Green leaves crown */}
-                <path d="M 112,94 L 120,88 L 128,94 L 124,98 L 116,98 Z" fill="#4CAF50" />
-                {/* Plump Strawberry body */}
+                {/* Contact shadow */}
+                <ellipse cx="121" cy="118" rx="15" ry="5.5" fill="rgba(20, 10, 5, 0.35)" />
+
+                {/* Tapered 3D Berry Body */}
                 <path
-                  d="M 108,96 C 106,104 114,118 120,121 C 126,118 134,104 132,96 C 130,92 110,92 108,96 Z"
+                  d="M 108,95 C 104,105 113,121 120,123 C 127,121 136,105 132,95 C 129,90 111,90 108,95 Z"
                   fill="#E91E63"
-                  stroke="#C2185B"
+                  stroke="#880E4F"
                   strokeWidth="1.2"
                 />
-                {/* Seeds */}
-                <circle cx="116" cy="100" r="1" fill="#FFF59D" />
-                <circle cx="124" cy="102" r="1" fill="#FFF59D" />
-                <circle cx="118" cy="108" r="1" fill="#FFF59D" />
-                <circle cx="122" cy="112" r="1" fill="#FFF59D" />
-                <circle cx="112" cy="104" r="1" fill="#FFF59D" />
-                <circle cx="128" cy="106" r="1" fill="#FFF59D" />
+                {/* Shadow flank on right side */}
+                <path
+                  d="M 120,92 C 128,92 133,103 131,114 C 127,121 120,123 120,123 Z"
+                  fill="#AD1457"
+                  opacity="0.8"
+                />
+                {/* Left shoulder highlight */}
+                <path
+                  d="M 110,96 C 108,102 112,112 116,117"
+                  fill="none"
+                  stroke="#FF80AB"
+                  strokeWidth="3.5"
+                  strokeLinecap="round"
+                  opacity="0.6"
+                />
+
+                {/* Golden Seeds with micro-indentation shadows */}
+                {[
+                  { cx: 114, cy: 98 },
+                  { cx: 122, cy: 99 },
+                  { cx: 116, cy: 105 },
+                  { cx: 124, cy: 107 },
+                  { cx: 112, cy: 102 },
+                  { cx: 128, cy: 103 },
+                  { cx: 119, cy: 112 },
+                  { cx: 123, cy: 116 }
+                ].map((seed, idx) => (
+                  <g key={`seed-${idx}`}>
+                    <ellipse cx={seed.cx} cy={seed.cy + 0.6} rx="1.2" ry="0.8" fill="#560027" />
+                    <ellipse cx={seed.cx} cy={seed.cy} rx="0.9" ry="1.2" fill="#FFF59D" />
+                  </g>
+                ))}
+
+                {/* Flaring green calyx crown leaves */}
+                <path
+                  d="M 120,91 L 112,85 L 115,92 L 105,92 L 114,95 L 118,97 L 122,97 L 126,95 L 135,92 L 125,92 L 128,85 Z"
+                  fill="#4CAF50"
+                  stroke="#1B5E20"
+                  strokeWidth="0.8"
+                />
+                <circle cx="120" cy="91" r="2" fill="#2E7D32" />
               </g>
             )}
 
+            {/* 6c. BLUEBERRY: Overlapping Trio of 3D Berries with Bloom */}
             {cake.topping === 'blueberry' && (
               <g id="topping-blueberry">
-                {/* Trio of blueberries */}
-                <circle cx="112" cy="106" r="10" fill="#303F9F" stroke="#1A237E" strokeWidth="1" />
-                <circle cx="110" cy="103" r="2.5" fill="#7986CB" opacity="0.8" />
-                <circle cx="128" cy="106" r="10" fill="#3949AB" stroke="#1A237E" strokeWidth="1" />
-                <circle cx="126" cy="103" r="2.5" fill="#7986CB" opacity="0.8" />
-                <circle cx="120" cy="98" r="11" fill="#3F51B5" stroke="#1A237E" strokeWidth="1" />
-                <circle cx="117" cy="95" r="3" fill="#9FA8DA" opacity="0.9" />
-                <circle cx="116" cy="94" r="1.2" fill="#FFFFFF" />
-                {/* Center blossom stars on berries */}
-                <polygon points="120,96 121,98 123,98 121,99 122,101 120,100 118,101 119,99 117,98 119,98" fill="#1A237E" />
+                {/* Contact shadow */}
+                <ellipse cx="121" cy="117" rx="18" ry="6" fill="rgba(10, 10, 30, 0.35)" />
+
+                {/* Back Left Berry */}
+                <circle cx="111" cy="107" r="10.5" fill="#283593" stroke="#1A237E" strokeWidth="1" />
+                <circle cx="109" cy="104" r="3" fill="#7986CB" opacity="0.6" />
+                <circle cx="108" cy="103" r="1.2" fill="#FFFFFF" opacity="0.85" />
+
+                {/* Back Right Berry */}
+                <circle cx="130" cy="107" r="10.5" fill="#303F9F" stroke="#1A237E" strokeWidth="1" />
+                <circle cx="128" cy="104" r="3" fill="#7986CB" opacity="0.6" />
+                <circle cx="127" cy="103" r="1.2" fill="#FFFFFF" opacity="0.85" />
+
+                {/* Front Center Berry */}
+                <circle cx="120" cy="99" r="12" fill="#3F51B5" stroke="#1A237E" strokeWidth="1.2" />
+                {/* Velvety bloom highlight */}
+                <circle cx="116.5" cy="95.5" r="4.5" fill="#9FA8DA" opacity="0.75" />
+                <circle cx="115" cy="94" r="1.8" fill="#FFFFFF" opacity="0.95" />
+                {/* Star blossom calyx indent on top */}
+                <polygon
+                  points="120,97 121.5,99.5 124,99.5 122,101 123,103.5 120,102 117,103.5 118,101 116,99.5 118.5,99.5"
+                  fill="#1A237E"
+                />
               </g>
             )}
 
+            {/* 6d. WAFER: 3D Pirouline Cylinder with Hollow Chocolate Core */}
             {cake.topping === 'wafer' && (
-              <g id="topping-wafer" transform="rotate(-25 120 100)">
-                {/* Diagonal Striped Wafer Stick */}
-                <rect x="114" y="65" width="12" height="50" rx="4" fill="#D7CCC8" stroke="#8D6E63" strokeWidth="1" />
-                <line x1="114" y1="72" x2="126" y2="76" stroke="#5D4037" strokeWidth="3" />
-                <line x1="114" y1="82" x2="126" y2="86" stroke="#5D4037" strokeWidth="3" />
-                <line x1="114" y1="92" x2="126" y2="96" stroke="#5D4037" strokeWidth="3" />
-                <line x1="114" y1="102" x2="126" y2="106" stroke="#5D4037" strokeWidth="3" />
+              <g id="topping-wafer" transform="rotate(-24 120 100)">
+                {/* Contact shadow at insertion into cake */}
+                <ellipse cx="120" cy="116" rx="8" ry="3.5" fill="rgba(20, 10, 5, 0.4)" />
+
+                {/* 3D Wafer Cylinder Body */}
+                <rect x="113" y="62" width="14" height="54" rx="1" fill="#D7CCC8" stroke="#8D6E63" strokeWidth="1" />
+                {/* Shaded right flank */}
+                <rect x="120" y="62" width="7" height="54" fill="#A1887F" opacity="0.6" />
+
+                {/* Spiraling Chocolate Ganache Ribbons */}
+                {[70, 80, 90, 100, 110].map((y, idx) => (
+                  <g key={`stripe-${idx}`}>
+                    <line x1="113" y1={y} x2="127" y2={y + 5} stroke="#4E342E" strokeWidth="3.5" />
+                    <line x1="113" y1={y - 0.5} x2="127" y2={y + 4.5} stroke="#6D4C41" strokeWidth="1.2" opacity="0.8" />
+                  </g>
+                ))}
+
+                {/* Hollow Top Ellipse showing chocolate ganache inside */}
+                <ellipse cx="120" cy="62" rx="7" ry="3" fill="#EFEBE9" stroke="#8D6E63" strokeWidth="1" />
+                <ellipse cx="120" cy="62" rx="4.5" ry="1.8" fill="#3E2723" />
               </g>
             )}
 
+            {/* 6e. CHOC PIECE: 3D Beveled Chocolate Plaque with Heart */}
             {cake.topping === 'choc_piece' && (
-              <g id="topping-choc" transform="rotate(12 120 100)">
-                {/* Elegant chocolate square medallion standing upright */}
-                <rect x="106" y="86" width="28" height="28" rx="4" fill="#3E2723" stroke="#271612" strokeWidth="1.2" />
-                <rect x="110" y="90" width="20" height="20" rx="2" fill="none" stroke="#5D4037" strokeWidth="1.5" />
-                <text x="120" y="104" textAnchor="middle" fill="#8D6E63" fontSize="10" fontWeight="bold" fontFamily="Fredoka, sans-serif">
-                  ♥
-                </text>
+              <g id="topping-choc" transform="rotate(10 120 100)">
+                {/* Contact shadow */}
+                <ellipse cx="120" cy="116" rx="16" ry="5" fill="rgba(20, 10, 5, 0.4)" />
+
+                {/* 3D Thickness Extrusion (bottom & right side) */}
+                <polygon points="106,112 134,112 137,115 109,115" fill="#20120E" />
+                <polygon points="134,84 137,87 137,115 134,112" fill="#2D1913" />
+
+                {/* Front Beveled Face */}
+                <rect x="106" y="84" width="28" height="28" rx="3" fill="#3E2723" stroke="#271612" strokeWidth="1.2" />
+                {/* Inner beveled frame border */}
+                <rect x="109.5" y="87.5" width="21" height="21" rx="2" fill="none" stroke="#5D4037" strokeWidth="1.5" />
+                <line x1="110" y1="88" x2="130" y2="88" stroke="#8D6E63" strokeWidth="1" opacity="0.8" />
+
+                {/* Embossed Gold Heart Motif */}
+                <path
+                  d="M 120,102 C 117,99 114,96 117,94 C 119,94 120,96 120,96 C 120,96 121,94 123,94 C 126,96 123,99 120,102 Z"
+                  fill="#FFB300"
+                  stroke="#FFA000"
+                  strokeWidth="0.8"
+                />
               </g>
             )}
 
+            {/* 6f. CANDY: 3D Swirl Lollipop with Translucent Sheen */}
             {cake.topping === 'candy' && (
               <g id="topping-candy">
-                {/* White stick */}
-                <line x1="120" y1="92" x2="120" y2="122" stroke="#FFFFFF" strokeWidth="3.5" strokeLinecap="round" />
-                {/* Swirl Lollipop candy */}
-                <circle cx="120" cy="88" r="14" fill="#FF4081" stroke="#C2185B" strokeWidth="1.5" />
-                <path d="M 120,88 A 6,6 0 0,1 126,88 A 6,6 0 0,1 120,94 A 10,10 0 0,1 110,88" fill="none" stroke="#FFFFFF" strokeWidth="2.5" strokeLinecap="round" />
-                <path d="M 120,88 A 12,12 0 0,1 132,88" fill="none" stroke="#69F0AE" strokeWidth="2" strokeLinecap="round" />
+                {/* Insertion shadow */}
+                <ellipse cx="120" cy="116" rx="8" ry="3.5" fill="rgba(20, 10, 5, 0.35)" />
+
+                {/* 3D Stick */}
+                <line x1="120" y1="88" x2="120" y2="122" stroke="#CBD5E1" strokeWidth="4" strokeLinecap="round" />
+                <line x1="119.2" y1="88" x2="119.2" y2="122" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" />
+
+                {/* Lollipop Disc Body */}
+                <circle cx="120" cy="85" r="15" fill="#FF4081" stroke="#C2185B" strokeWidth="1.5" />
+                {/* Candy-cane spiral ribbons */}
+                <path
+                  d="M 120,85 A 6,6 0 0,1 126,85 A 6,6 0 0,1 120,91 A 10,10 0 0,1 110,85"
+                  fill="none"
+                  stroke="#FFFFFF"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M 120,85 A 12,12 0 0,1 132,85"
+                  fill="none"
+                  stroke="#00E676"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                />
+                {/* Glassy specular shine curve */}
+                <path
+                  d="M 112,75 A 12,12 0 0,1 128,75"
+                  fill="none"
+                  stroke="#FFFFFF"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  opacity="0.8"
+                />
               </g>
             )}
           </g>

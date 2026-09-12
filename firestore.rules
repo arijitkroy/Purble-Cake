@@ -1,0 +1,46 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Leaderboard collection rules for Purble Cake
+    match /purble_leaderboard/{documentId} {
+      
+      // Allow anyone to read leaderboard entries without requiring authentication
+      allow read: if true;
+
+      // Allow players to submit new high scores with schema validation
+      allow create: if request.resource.data.keys().hasAll(['name', 'score', 'mode', 'level', 'cakesDelivered', 'accuracy', 'date'])
+                    // Field type and length checks
+                    && request.resource.data.name is string
+                    && request.resource.data.name.size() > 0
+                    && request.resource.data.name.size() <= 30
+                    // Score validation
+                    && request.resource.data.score is number
+                    && request.resource.data.score >= 0
+                    && request.resource.data.score <= 1000000
+                    // Mode validation
+                    && request.resource.data.mode in ['classic', 'timed', 'practice']
+                    // Level validation
+                    && request.resource.data.level is number
+                    && request.resource.data.level >= 1
+                    // Cakes delivered validation
+                    && request.resource.data.cakesDelivered is number
+                    && request.resource.data.cakesDelivered >= 0
+                    // Accuracy validation
+                    && request.resource.data.accuracy is number
+                    && request.resource.data.accuracy >= 0
+                    && request.resource.data.accuracy <= 100
+                    // Date string validation
+                    && request.resource.data.date is string;
+
+      // Disallow updating or deleting submitted scores to protect leaderboard integrity
+      allow update, delete: if false;
+    }
+
+    // Deny all other collections by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
